@@ -6,41 +6,57 @@ use App\Events\BidPlaced;
 use App\Models\Auction;
 use App\Models\Bid;
 use App\Models\User;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use RuntimeException;
 
 class AuctionService
 {
     public function placeBid(User $user, Auction $auction, float $amount): Bid
     {
-        return DB::transaction(function () use ($user, $auction, $amount) {
-            $auction = Auction::query()
-                ->whereKey($auction->id)
-                ->lockForUpdate()
-                ->firstOrFail();
+        $lockKey = "auction:{$auction->id}:bid";
 
-            $this->validateAuctionCanReceiveBid($user, $auction, $amount);
+        $lock = Cache::lock($lockKey, 5);
 
-            $bid = Bid::create([
-                'auction_id' => $auction->id,
-                'user_id' => $user->id,
-                'amount' => $amount,
+        if (! $lock->get()) {
+            throw ValidationException::withMessages([
+                'auction' => ['Outro lance está sendo processado neste leilão. Tente novamente em instantes.'],
             ]);
+        }
 
-            $auction->current_price = $amount;
+        try {
+            return DB::transaction(function () use ($user, $auction, $amount) {
+                $auction = Auction::query()
+                    ->whereKey($auction->id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
-            $secondsRemaining = now()->diffInSeconds($auction->ends_at, false);
+                $this->validateAuctionCanReceiveBid($user, $auction, $amount);
 
-            if ($secondsRemaining > 0 && $secondsRemaining <= 10) {
-                $auction->ends_at = $auction->ends_at->addSeconds(30);
-            }
+                $bid = Bid::create([
+                    'auction_id' => $auction->id,
+                    'user_id' => $user->id,
+                    'amount' => $amount,
+                ]);
 
-            $auction->save();
+                $auction->current_price = $amount;
 
-            event(new BidPlaced($bid, $auction));
+                $secondsRemaining = now()->diffInSeconds($auction->ends_at, false);
 
-            return $bid->load('user:id,name,email');
-        });
+                if ($secondsRemaining > 0 && $secondsRemaining <= 10) {
+                    $auction->ends_at = $auction->ends_at->addSeconds(30);
+                }
+
+                $auction->save();
+
+                event(new BidPlaced($bid->load('user:id,name,email'), $auction));
+
+                return $bid->load('user:id,name,email');
+            });
+        } finally {
+            optional($lock)->release();
+        }
     }
 
     private function validateAuctionCanReceiveBid(User $user, Auction $auction, float $amount): void
