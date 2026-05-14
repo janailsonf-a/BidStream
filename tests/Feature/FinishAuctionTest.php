@@ -100,4 +100,75 @@ class FinishAuctionTest extends TestCase
         $this->assertEquals('active', $auction->status);
         $this->assertNull($auction->winner_id);
     }
+
+    public function test_finished_auction_is_not_processed_again(): void
+    {
+        $seller = User::factory()->create();
+        $winner = User::factory()->create();
+
+        $auction = Auction::create([
+            'created_by' => $seller->id,
+            'winner_id' => $winner->id,
+            'title' => 'Monitor 4K',
+            'description' => 'Monitor usado em bom estado.',
+            'starting_price' => 1000,
+            'current_price' => 1300,
+            'starts_at' => now()->subHours(2),
+            'ends_at' => now()->subMinute(),
+            'status' => 'finished',
+        ]);
+
+        $this->artisan('auctions:finish-expired')
+            ->expectsOutput('Nenhum leilão expirado encontrado.')
+            ->assertSuccessful();
+
+        $auction->refresh();
+
+        $this->assertEquals('finished', $auction->status);
+        $this->assertEquals($winner->id, $auction->winner_id);
+    }
+
+    public function test_oldest_bid_wins_when_highest_amount_is_tied(): void
+    {
+        $seller = User::factory()->create();
+        $firstBidder = User::factory()->create();
+        $secondBidder = User::factory()->create();
+
+        $auction = Auction::create([
+            'created_by' => $seller->id,
+            'title' => 'Camera DSLR',
+            'description' => 'Camera em bom estado.',
+            'starting_price' => 1000,
+            'current_price' => 2000,
+            'starts_at' => now()->subHours(2),
+            'ends_at' => now()->subMinute(),
+            'status' => 'active',
+        ]);
+
+        $oldestBid = Bid::create([
+            'auction_id' => $auction->id,
+            'user_id' => $firstBidder->id,
+            'amount' => 2000,
+        ]);
+        $oldestBid->forceFill([
+            'created_at' => now()->subMinutes(5),
+            'updated_at' => now()->subMinutes(5),
+        ])->save();
+
+        $newestBid = Bid::create([
+            'auction_id' => $auction->id,
+            'user_id' => $secondBidder->id,
+            'amount' => 2000,
+        ]);
+        $newestBid->forceFill([
+            'created_at' => now()->subMinutes(3),
+            'updated_at' => now()->subMinutes(3),
+        ])->save();
+
+        $this->artisan('auctions:finish-expired')
+            ->expectsOutput('Leilões finalizados: 1')
+            ->assertSuccessful();
+
+        $this->assertEquals($firstBidder->id, $auction->fresh()->winner_id);
+    }
 }
