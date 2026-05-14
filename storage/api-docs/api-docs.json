@@ -1,0 +1,531 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+        "title": "BidStream API",
+        "description": "API de leilão em tempo real com Laravel, Redis Atomic Lock, Laravel Reverb e finalização automática de leilões.",
+        "version": "1.0.0"
+    },
+    "servers": [
+        {
+            "url": "http://127.0.0.1:8000",
+            "description": "Servidor local"
+        }
+    ],
+    "paths": {
+        "/api/register": {
+            "post": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Registrar usuário",
+                "operationId": "4154a1450c68580c49a9228ebcb35bb2",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "name",
+                                    "email",
+                                    "password",
+                                    "password_confirmation"
+                                ],
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "example": "Janailson"
+                                    },
+                                    "email": {
+                                        "type": "string",
+                                        "example": "janailson@example.com"
+                                    },
+                                    "password": {
+                                        "type": "string",
+                                        "example": "12345678"
+                                    },
+                                    "password_confirmation": {
+                                        "type": "string",
+                                        "example": "12345678"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Usuário registrado com sucesso"
+                    },
+                    "422": {
+                        "description": "Erro de validação"
+                    }
+                }
+            }
+        },
+        "/api/login": {
+            "post": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Login de usuário",
+                "operationId": "077daf7636efe5f9f3936e5fe56d30bd",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "email",
+                                    "password"
+                                ],
+                                "properties": {
+                                    "email": {
+                                        "type": "string",
+                                        "example": "janailson@example.com"
+                                    },
+                                    "password": {
+                                        "type": "string",
+                                        "example": "12345678"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Login realizado com sucesso"
+                    },
+                    "422": {
+                        "description": "Credenciais inválidas"
+                    }
+                }
+            }
+        },
+        "/api/me": {
+            "get": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Retornar usuário autenticado",
+                "operationId": "5da1e47fd49cfc12cb5de41d851c88f8",
+                "responses": {
+                    "200": {
+                        "description": "Usuário autenticado"
+                    },
+                    "401": {
+                        "description": "Não autenticado"
+                    }
+                },
+                "security": [
+                    {
+                        "sanctum": []
+                    }
+                ]
+            }
+        },
+        "/api/logout": {
+            "post": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Logout do usuário autenticado",
+                "operationId": "6f0317686e2473d76e8b4f6b0084974e",
+                "responses": {
+                    "200": {
+                        "description": "Logout realizado com sucesso"
+                    },
+                    "401": {
+                        "description": "Não autenticado"
+                    }
+                },
+                "security": [
+                    {
+                        "sanctum": []
+                    }
+                ]
+            }
+        },
+        "/api/auctions": {
+            "get": {
+                "tags": [
+                    "Auctions"
+                ],
+                "summary": "Listar leilões",
+                "operationId": "c8175dc29501d8ef23146d86947f6250",
+                "parameters": [
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "draft",
+                                "active",
+                                "finished",
+                                "cancelled"
+                            ]
+                        },
+                        "example": "active"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Lista paginada de leilões"
+                    },
+                    "401": {
+                        "description": "Não autenticado"
+                    }
+                },
+                "security": [
+                    {
+                        "sanctum": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Auctions"
+                ],
+                "summary": "Criar leilão",
+                "operationId": "9f79b910fc400f3ab480b9039f69e1f7",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "title",
+                                    "starting_price",
+                                    "starts_at",
+                                    "ends_at"
+                                ],
+                                "properties": {
+                                    "title": {
+                                        "type": "string",
+                                        "example": "Notebook Dell Inspiron"
+                                    },
+                                    "description": {
+                                        "type": "string",
+                                        "example": "Notebook usado em bom estado."
+                                    },
+                                    "starting_price": {
+                                        "type": "number",
+                                        "format": "float",
+                                        "example": 1500
+                                    },
+                                    "starts_at": {
+                                        "type": "string",
+                                        "format": "date-time",
+                                        "example": "2026-05-14 10:00:00"
+                                    },
+                                    "ends_at": {
+                                        "type": "string",
+                                        "format": "date-time",
+                                        "example": "2026-05-14 12:00:00"
+                                    },
+                                    "status": {
+                                        "type": "string",
+                                        "example": "active",
+                                        "enum": [
+                                            "draft",
+                                            "active",
+                                            "finished",
+                                            "cancelled"
+                                        ]
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Leilão criado com sucesso"
+                    },
+                    "401": {
+                        "description": "Não autenticado"
+                    },
+                    "422": {
+                        "description": "Erro de validação"
+                    }
+                },
+                "security": [
+                    {
+                        "sanctum": []
+                    }
+                ]
+            }
+        },
+        "/api/auctions/{auction}": {
+            "get": {
+                "tags": [
+                    "Auctions"
+                ],
+                "summary": "Exibir detalhes do leilão",
+                "operationId": "1c95bcef50cc2fa71bdd23df1e9e2c67",
+                "parameters": [
+                    {
+                        "name": "auction",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "example": 1
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Detalhes do leilão"
+                    },
+                    "401": {
+                        "description": "Não autenticado"
+                    },
+                    "404": {
+                        "description": "Leilão não encontrado"
+                    }
+                },
+                "security": [
+                    {
+                        "sanctum": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "Auctions"
+                ],
+                "summary": "Atualizar leilão",
+                "operationId": "089c41aad82c25fc2c2c1272203b5bf4",
+                "parameters": [
+                    {
+                        "name": "auction",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "example": 1
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "title",
+                                    "starting_price",
+                                    "starts_at",
+                                    "ends_at"
+                                ],
+                                "properties": {
+                                    "title": {
+                                        "type": "string",
+                                        "example": "Notebook Dell Inspiron Atualizado"
+                                    },
+                                    "description": {
+                                        "type": "string",
+                                        "example": "Notebook revisado."
+                                    },
+                                    "starting_price": {
+                                        "type": "number",
+                                        "format": "float",
+                                        "example": 1600
+                                    },
+                                    "starts_at": {
+                                        "type": "string",
+                                        "format": "date-time",
+                                        "example": "2026-05-14 10:00:00"
+                                    },
+                                    "ends_at": {
+                                        "type": "string",
+                                        "format": "date-time",
+                                        "example": "2026-05-14 13:00:00"
+                                    },
+                                    "status": {
+                                        "type": "string",
+                                        "example": "draft",
+                                        "enum": [
+                                            "draft",
+                                            "active",
+                                            "finished",
+                                            "cancelled"
+                                        ]
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Leilão atualizado com sucesso"
+                    },
+                    "403": {
+                        "description": "Sem permissão"
+                    },
+                    "422": {
+                        "description": "Erro de validação"
+                    }
+                },
+                "security": [
+                    {
+                        "sanctum": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Auctions"
+                ],
+                "summary": "Excluir leilão",
+                "operationId": "78b1363a470b5eda75c4a4ec8683ddfd",
+                "parameters": [
+                    {
+                        "name": "auction",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "example": 1
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Leilão excluído com sucesso"
+                    },
+                    "403": {
+                        "description": "Sem permissão"
+                    },
+                    "422": {
+                        "description": "Leilão não pode ser excluído"
+                    }
+                },
+                "security": [
+                    {
+                        "sanctum": []
+                    }
+                ]
+            }
+        },
+        "/api/auctions/{auction}/bids": {
+            "get": {
+                "tags": [
+                    "Bids"
+                ],
+                "summary": "Listar lances de um leilão",
+                "operationId": "df2850a912fe3e12796cc29e9a2407b8",
+                "parameters": [
+                    {
+                        "name": "auction",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "example": 1
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Lista paginada de lances"
+                    },
+                    "404": {
+                        "description": "Leilão não encontrado"
+                    }
+                },
+                "security": [
+                    {
+                        "sanctum": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Bids"
+                ],
+                "summary": "Enviar lance",
+                "description": "Envia um lance para um leilão ativo. Usa Redis Atomic Lock para evitar concorrência.",
+                "operationId": "79af0498e9a2586ac2542e1127448c3d",
+                "parameters": [
+                    {
+                        "name": "auction",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "example": 1
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "amount"
+                                ],
+                                "properties": {
+                                    "amount": {
+                                        "type": "number",
+                                        "format": "float",
+                                        "example": 4700
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Lance realizado com sucesso"
+                    },
+                    "401": {
+                        "description": "Não autenticado"
+                    },
+                    "422": {
+                        "description": "Lance inválido, leilão encerrado ou lock ativo"
+                    }
+                },
+                "security": [
+                    {
+                        "sanctum": []
+                    }
+                ]
+            }
+        }
+    },
+    "components": {
+        "securitySchemes": {
+            "sanctum": {
+                "type": "http",
+                "bearerFormat": "Token",
+                "scheme": "bearer"
+            }
+        }
+    },
+    "tags": [
+        {
+            "name": "Auth",
+            "description": "Autenticação de usuários"
+        },
+        {
+            "name": "Auctions",
+            "description": "Gerenciamento de leilões"
+        },
+        {
+            "name": "Bids",
+            "description": "Lances em leilões"
+        }
+    ]
+}
