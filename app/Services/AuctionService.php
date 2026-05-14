@@ -91,4 +91,36 @@ class AuctionService
             ]);
         }
     }
+
+    public function finishAuction(Auction $auction): Auction
+    {
+        return DB::transaction(function () use ($auction) {
+            $auction = Auction::query()
+                ->whereKey($auction->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($auction->status === 'finished') {
+                return $auction;
+            }
+
+            if (now()->lt($auction->ends_at)) {
+                throw ValidationException::withMessages([
+                    'auction' => ['Este leilão ainda não chegou ao horário de encerramento.'],
+                ]);
+            }
+
+            $highestBid = $auction->bids()
+                ->orderByDesc('amount')
+                ->orderBy('created_at')
+                ->first();
+
+            $auction->update([
+                'status' => 'finished',
+                'winner_id' => $highestBid?->user_id,
+            ]);
+
+            return $auction->fresh(['winner:id,name,email']);
+        });
+    }
 }
