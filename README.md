@@ -1,28 +1,38 @@
 # BidStream — Real-Time Auction API
 
-BidStream é uma API de leilão em tempo real desenvolvida com Laravel, Redis e Laravel Reverb. O projeto foi criado para demonstrar conceitos avançados de backend, como controle de concorrência, WebSockets, regras de negócio sensíveis a tempo, autenticação via API, testes automatizados e agendamento de tarefas.
+BidStream é uma API de leilão em tempo real desenvolvida com Laravel, Redis e Laravel Reverb. O projeto foi criado para demonstrar conceitos avançados de backend, como controle de concorrência, WebSockets, regras de negócio sensíveis a tempo, autenticação via API, testes automatizados, documentação OpenAPI, Docker e CI com GitHub Actions.
 
 ## Visão Geral
 
-O sistema permite que usuários criem leilões, enviem lances em tempo real e acompanhem atualizações instantâneas via WebSocket. Para evitar inconsistências em lances simultâneos, o BidStream utiliza Redis Atomic Lock combinado com transações no banco de dados.
+O sistema permite que usuários criem leilões, enviem lances em tempo real e acompanhem atualizações instantâneas via WebSocket.
+
+Para evitar inconsistências em lances simultâneos, o BidStream utiliza Redis Atomic Lock combinado com transações no banco de dados usando `lockForUpdate()`.
 
 Além disso, o projeto implementa a regra de "lance de último segundo": se um lance for feito quando faltam 10 segundos ou menos para o encerramento, o leilão é automaticamente estendido em mais 30 segundos.
 
 ## Principais Funcionalidades
 
 - Registro e login de usuários com Laravel Sanctum
+- Logout e rota `/api/me`
 - CRUD inicial de leilões
 - Envio de lances autenticados
+- Listagem de lances por leilão
 - Bloqueio de lance do dono do próprio leilão
 - Validação para impedir lances menores ou iguais ao valor atual
+- Bloqueio de lances em leilões encerrados, não iniciados ou inativos
 - Redis Atomic Lock para proteger lances simultâneos
 - Transações com `lockForUpdate()` para consistência no banco
 - Atualização em tempo real com Laravel Reverb e Laravel Echo
+- Evento `BidPlaced` transmitido via WebSocket
 - Extensão automática em lances de último segundo
 - Finalização automática de leilões expirados
 - Definição automática do vencedor pelo maior lance
+- Desempate pelo lance mais antigo
 - Scheduler para executar finalização a cada minuto
-- Testes automatizados para regras críticas de negócio
+- Documentação Swagger/OpenAPI navegável
+- Docker Compose com MySQL e Redis
+- GitHub Actions rodando testes automaticamente
+- Testes automatizados cobrindo regras críticas de negócio
 
 ## Tecnologias Utilizadas
 
@@ -33,8 +43,11 @@ Além disso, o projeto implementa a regra de "lance de último segundo": se um l
 - Laravel Echo
 - Redis
 - MySQL
+- Docker Compose
+- Swagger/OpenAPI com L5-Swagger
 - Vite
-- PHPUnit/Pest via `php artisan test`
+- PHPUnit
+- GitHub Actions
 
 ## Arquitetura Principal
 
@@ -58,6 +71,9 @@ app/
 │   ├── Auction.php
 │   ├── Bid.php
 │   └── User.php
+├── OpenApi/
+│   ├── OpenApi.php
+│   └── BidStreamApi.php
 └── Services/
     └── AuctionService.php
 ```
@@ -89,13 +105,9 @@ app/
 
 O projeto utiliza Redis para impedir que dois lances sejam processados simultaneamente no mesmo leilão.
 
-Exemplo conceitual:
-
 ```php
 $lock = Cache::lock("auction:{$auction->id}:bid", 5);
 ```
-
-Isso garante que apenas uma operação de lance seja processada por vez para cada leilão.
 
 ### Transação com lockForUpdate
 
@@ -107,8 +119,6 @@ Auction::query()
     ->lockForUpdate()
     ->firstOrFail();
 ```
-
-Essa combinação aumenta a segurança contra condições de corrida.
 
 ### Lance de Último Segundo
 
@@ -206,6 +216,12 @@ Para produção, configure o cron:
 |---|---|---|
 | GET | `/api/auctions/{auction}/bids` | Lista lances do leilão |
 | POST | `/api/auctions/{auction}/bids` | Envia um lance |
+
+### Documentação
+
+| Método | Rota | Descrição |
+|---|---|---|
+| GET | `/api/documentation` | Interface Swagger/OpenAPI |
 
 ## Exemplos de Requisição
 
@@ -349,7 +365,88 @@ Suba o Reverb:
 php artisan reverb:start --host=0.0.0.0 --port=8081 --debug
 ```
 
+## Rodando com Docker Compose
+
+O projeto inclui um `docker-compose.yml` para subir MySQL e Redis.
+
+Subir containers:
+
+```bash
+docker compose up -d
+```
+
+Verificar containers:
+
+```bash
+docker compose ps
+```
+
+Parar containers:
+
+```bash
+docker compose down
+```
+
+Remover containers e volumes:
+
+```bash
+docker compose down -v
+```
+
+Configuração sugerida no `.env` usando Docker Compose:
+
+```env
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3307
+DB_DATABASE=bidstream
+DB_USERNAME=bidstream
+DB_PASSWORD=bidstream
+
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6380
+REDIS_PASSWORD=null
+```
+
+Depois rode:
+
+```bash
+php artisan optimize:clear
+php artisan migrate
+```
+
+## Documentação Swagger/OpenAPI
+
+A documentação navegável da API pode ser acessada localmente em:
+
+```txt
+http://127.0.0.1:8000/api/documentation
+```
+
+Para gerar ou atualizar a documentação:
+
+```bash
+php artisan l5-swagger:generate
+```
+
+A documentação cobre os principais grupos da API:
+
+```txt
+Auth
+Auctions
+Bids
+```
+
 ## Testes
+
+O projeto possui uma suíte automatizada cobrindo autenticação, leilões, lances, Redis Atomic Lock, eventos, finalização de leilões e documentação Swagger.
+
+Cobertura atual:
+
+```txt
+44 testes
+159 assertions
+```
 
 Rodar todos os testes:
 
@@ -357,10 +454,22 @@ Rodar todos os testes:
 php artisan test
 ```
 
+Rodar apenas os testes de autenticação:
+
+```bash
+php artisan test --filter=AuthApiTest
+```
+
+Rodar apenas os testes de leilões:
+
+```bash
+php artisan test --filter=AuctionApiTest
+```
+
 Rodar apenas os testes de lances:
 
 ```bash
-php artisan test --filter=AuctionBidTest
+php artisan test --filter=BidApiTest
 ```
 
 Rodar apenas os testes de finalização:
@@ -369,18 +478,46 @@ Rodar apenas os testes de finalização:
 php artisan test --filter=FinishAuctionTest
 ```
 
-Cobertura atual das principais regras:
+Rodar apenas os testes do Swagger:
+
+```bash
+php artisan test --filter=SwaggerDocumentationTest
+```
+
+Principais cenários cobertos:
 
 ```txt
-- Usuário consegue dar lance válido
-- Lance precisa ser maior que o valor atual
-- Dono não pode dar lance no próprio leilão
-- Leilão encerrado não aceita lance
-- Lance nos últimos 10 segundos estende o leilão
-- Leilão expirado é finalizado
-- Vencedor é definido pelo maior lance
-- Leilão sem lances é finalizado sem vencedor
-- Leilão ainda ativo não é finalizado
+- Registro, login, logout e /api/me
+- Bloqueio de acesso não autenticado
+- Criação, listagem, exibição, edição e exclusão de leilões
+- Validações de criação e atualização de leilões
+- Envio de lances válidos
+- Bloqueio de lance do dono do leilão
+- Bloqueio de lance menor ou igual ao valor atual
+- Bloqueio de lance em leilão encerrado, não iniciado ou inativo
+- Atualização automática do current_price
+- Registro do lance na tabela bids
+- Listagem de lances com usuário
+- Redis Atomic Lock para impedir processamento simultâneo
+- Evento BidPlaced disparado com payload validado
+- Extensão automática do leilão nos últimos 10 segundos
+- Finalização automática de leilões expirados
+- Definição de vencedor pelo maior lance
+- Desempate pelo lance mais antigo
+- Leilão sem lances finalizado sem vencedor
+- Swagger/OpenAPI acessível e geração sem erros
+```
+
+## GitHub Actions
+
+O projeto possui workflow de CI para rodar os testes automaticamente em pushes e pull requests para a branch principal.
+
+Fluxo validado:
+
+```txt
+composer install
+php artisan migrate --force
+php artisan test
 ```
 
 ## Comandos Úteis
@@ -409,6 +546,12 @@ Finalizar leilões expirados manualmente:
 php artisan auctions:finish-expired
 ```
 
+Gerar documentação Swagger:
+
+```bash
+php artisan l5-swagger:generate
+```
+
 Testar Redis no Tinker:
 
 ```bash
@@ -432,7 +575,10 @@ Atualizar em tempo real
 Estender leilão nos últimos segundos
 Finalizar automaticamente
 Definir vencedor
+Documentar API
 Testar regras críticas
+Executar testes em CI
+Rodar infraestrutura com Docker Compose
 ```
 
 ## Próximas Melhorias
@@ -443,11 +589,13 @@ Testar regras críticas
 - Exibir lances em tempo real na interface
 - Criar painel do vendedor
 - Criar histórico do usuário
-- Adicionar Docker Compose
-- Adicionar GitHub Actions para rodar testes automaticamente
-- Criar documentação OpenAPI/Swagger
+- Adicionar eventos para leilão finalizado
+- Criar notificações para vencedor
 - Melhorar autorização com Policies
-- Criar eventos para leilão finalizado
+- Adicionar paginação customizada nos Resources
+- Criar API Resources para padronizar respostas
+- Criar ambiente Docker completo com PHP/Nginx
+- Publicar uma demo em ambiente cloud
 
 ## Autor
 
